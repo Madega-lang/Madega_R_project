@@ -1,0 +1,140 @@
+---
+title: ' MADEGA '
+author: 'MADEGA FJ\'
+date: "`r Sys.Date()`"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#########################################
+## EXPLORATORY DATA ANALYSIS      #######
+#########################################
+
+```{r}
+library(fpp2)
+library(forecast)
+library(tseries)
+library(stray)
+require(ggplot2)
+data("wmurders")
+head(wmurders)
+tail(wmurders)
+
+#Z=ts(wmurders, start = 1999, frequency = 1)
+par(mfrow=c(2,2))
+plot(wmurders, xlab="Year", ylab="Number of women murdered", col="blue",main=" (a) Annual female murder rate")
+plot(density(wmurders),xlab="Number of women murdered",col="blue", main=" (b) Density plot" )
+qqnorm(wmurders,col="blue", main = "(c) normal QQ plot")
+qqline(wmurders)
+boxplot(wmurders, col="blue", main="(d) Box plot")
+#Figure 1: (a) Plot of the annual female murders rate (top left panel), (b) A kernel density plot of the wmurders(top right panel), (c) Normal QQ plot of the wmurders 
+#(bottom right panel),  (d) The Box plot of the wmureders(bottom right panel).
+
+#Figure 1 (top-left panel) shows that in the 1950s and 1960s, the annual number of women murdered was relatively low, averaging around 2.5 before rising steadily throughout the 1970s and peaking above four murders per year in the 1980s, after which a slight decline is observed. The density plot (top-right panel) confirms this shift by displaying a bimodal distribution, with two distinct peaks corresponding to the lower and higher phases of the series. The normal QQ plot (bottom left panel) indicates departures from normality, particularly at the tails, further supporting the presence of non-normal and multimodal characteristics in the data. Finally, the box plot (bottom right panel) highlights that the median number of murders is approximately 3.5, with most observations falling between three and four murders annually, and no extreme outliers detected. Overall, the evidence suggests that the distribution of female murder rates is not normally distributed but instead reflects two distinct historical regimes of lower and higher violence.
+
+summary(wmurders)
+library(e1071)
+kurtosis(wmurders)
+skewness(wmurders)
+sd(wmurders)
+#The median of 3.463 exceeds the mean of 3.393, which points to a slight leftward skew in the distribution, in line with the skewness statistic of –0.139. Furthermore, the negative kurtosis value (–1.566) indicates a platykurtic pattern, suggesting that the data are flatter and have lighter tails compared to a normal distribution. The standard deviation of 0.749 signals a moderate level of dispersion around the average, consistent with the relatively small interquartile spread illustrated in the box plot.
+outliers <- find_HDoutliers(wmurders, knnsearchtype = "brute")
+display_HDoutliers(wmurders, outliers) 
+outlierss <- boxplot.stats(wmurders)$out
+outlierss
+
+#Figure 2: Shows the outlier plot.
+#Figure 3: The distribution of values appears compact, with most data falling within the expected range. No observations are flagged as statistical outliers, supporting the earlier boxplot result, which also showed no extreme values outside the whiskers. Hence it means no outliers were detected under the standard boxplot rule.
+
+
+#QUESTION 1
+#(a)
+gamma <- BoxCox.lambda(wmurders,lower = 0)
+gamma
+transformed_data <- BoxCox(wmurders, gamma)
+transformed_data
+par(mfrow = c(2,1))
+plot(wmurders, main = "Original wmurders data")
+plot(transformed_data, main = paste("Box-Cox Transformed data (lambda =", round(gamma, 5), ")"))
+#Figure 3: Exhibit the original data(Top panel) and the transformed data( bottom panel)
+#Figure 3: The original plot of the wmurders data, representing U.S. female murder rates, likely exhibits a pronounced non-linear trend and, crucially, non-constant variance, where the year-to-year fluctuations were larger when the murder rate was at its peak. The applied Box-Cox transformation, with a lambda value very near zero, effectively functions as a logarithmic transformation. This transformation successfully stabilizes the variance across the entire time series, making the fluctuations around the trend appear consistent from the 1950s to the 2000s, thereby meeting a key assumption for reliable time series modeling and forecasting
+
+set.seed(123)
+#(b) 
+M1 <- auto.arima(wmurders, lambda=gamma)
+summary(M1)
+#(c) 
+M2 <- Arima(wmurders, order=c(1,1,1), lambda=gamma)
+summary(M2)
+M3=Arima(wmurders, order=c(1,0,1), lambda=gamma)
+summary(M3)
+M4=Arima(wmurders, order=c(2,0,2), lambda=gamma)
+summary(M4)
+#(d)
+AIC_vals <- c(
+  fit1 = AIC(M1),
+  fit2 = AIC(M2),
+  fit3 = AIC(M3),
+  fit4 = AIC(M4)
+)
+print(AIC_vals)
+best_fit <- list(M1,M2,M3,M4)[[ which.min(AIC_vals) ]]
+best_fit
+checkresiduals(best_fit)
+#Figure 4: Shows the ACF and the residuals plots of the wmurders.
+#Figure 4: Figure 4 indicates that there is no evidence of significant autocorrelation, as all autocorrelation coefficients remain within the  confidence bounds. The histogram of the residuals shows the distribution of the errors from the time series model. The plot has a shape that is roughly bell-shaped, and the overlaid red curve, which represents a normal distribution, appears to be a good fit. This indicates that the residuals are normally distributed, which is a key assumption for many time series models. The mean of the residuals is centered around zero, which is also a good sign, suggesting that the model isn't systematically over- or under-predicting the values.
+
+#(e)
+autoplot(forecast(best_fit, h=20))
+
+#Figure 5: Forecasts from ARIMA(1,1,1).
+#Figure 5: The plot shows the historical data (the black line) from approximately 1950 to 2005, followed by the 20-step ahead forecast (the blue line). The forecast indicates that the number of murders is predicted to stabilize and remain relatively flat over the next 20 years. This is a common outcome for time series models when they don't detect a strong, continuing trend in the recent data.
+#The dark blue shaded area represents the 80% prediction interval, while the light blue shaded area shows the 95% prediction interval. These intervals show the range within which the actual future values are expected to fall. The fact that the intervals widen significantly over time reflects the increasing uncertainty of the forecast as it projects further into the future. This is a normal and expected characteristic of forecasting
+
+
+#QUESTION 2
+data("condmilk")
+head(condmilk)
+plot(condmilk, col="blue", xlab="year",ylab="production", main="Monthly Condensed Milk Production")
+gamma1 <- BoxCox.lambda(condmilk, lower = 0)
+gamma1
+frequency(condmilk)
+Seasonal_df<-diff(condmilk, lag = 12)
+Seasonal_df
+plot(Seasonal_df,col="blue", xlab="year",ylab="production", main="Monthly Condensed Milk Production")
+model1 <- auto.arima(condmilk, lambda=gamma1, seasonal=TRUE, stepwise=FALSE, approximation=FALSE)
+summary(model1)
+model2 <- Arima(condmilk, order=c(2,1,2), seasonal=c(0,1,1), lambda=gamma1)
+summary(model2)
+model3 <- Arima(condmilk, order=c(1,1,1), seasonal=c(1,1,0), lambda=gamma1)
+summary(model3)
+model4 <- Arima(condmilk, order=c(1,1,2), seasonal=c(1,1,1), lambda=gamma1)
+summary(model4)
+AIC_values <- c(
+  fit5 = AIC(model1),
+  fit6 = AIC(model2),
+  fit7 = AIC(model3),
+  fit8 = AIC(model4)
+)
+print(AIC_values)
+best_fit1 <- list(model1, model2, model3,model4)[[ which.min(AIC_values) ]]
+best_fit1
+checkresiduals(best_fit1)
+fc_cm <- forecast(best_fit1, h=24)
+fc_cm
+plot(fc_cm,main="24-Month Forecast - Condensed Milk Production",
+  ylab="Production", xlab="Year", height=600)
+#Box.test(best_fit1, lag = 12, type = "Ljung")
+```
+```{r fig.height=6, fig.width=8}
+fc_cm <- forecast(best_fit1, h=24)
+fc_cm
+plot(fc_cm,
+     main = "24-Month Forecast - Condensed Milk Production",
+     ylab = "Production", xlab = "Year")
+```
